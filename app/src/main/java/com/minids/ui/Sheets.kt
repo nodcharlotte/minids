@@ -55,7 +55,8 @@ fun SettingsSheet(
     onSearch: (Boolean) -> Unit,
     onDark: (Boolean) -> Unit,
     onLoadBalance: () -> Unit,
-    onModelRefresh: () -> Unit
+    onModelRefresh: () -> Unit,
+    onWeb: (Boolean) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var exp by remember { mutableStateOf(log2(state.settings.contextTokens.toFloat())) }
@@ -218,6 +219,28 @@ fun SettingsSheet(
                 fontSize = 10.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            Spacer(Modifier.height(16.dp))
+            ToggleRow(
+                title = "电脑访问",
+                subtitle = "同一 WiFi 下，用电脑浏览器打开下面的地址继续聊。手机需保持前台。",
+                checked = state.webOn,
+                onChange = onWeb
+            )
+            if (state.webOn && state.webUrl != null) {
+                Text(
+                    state.webUrl,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(top = 6.dp, start = 2.dp)
+                )
+                Text(
+                    "注意：同一网络内的其他人也能打开这个地址。",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 4.dp, start = 2.dp)
+                )
+            }
 
             Spacer(Modifier.height(16.dp))
             Row(

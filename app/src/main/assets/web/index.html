@@ -1,0 +1,856 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MiniDS</title>
+<style>
+  :root{
+    --bg:#fcfcfa; --fg:#171717; --muted:#6b6b66; --bubble:#f1f1ee; --line:#e4e4df; --soft:#f7f7f4;
+  }
+  html.dark{
+    --bg:#151517; --fg:#f0f0f0; --muted:#a6a6a6; --bubble:#2c2c2e; --line:#333338; --soft:#212123;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--fg);
+    font:16px/1.6 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  #app{max-width:880px;margin:0 auto;height:100vh;display:flex;flex-direction:column;padding:0 20px}
+  header{height:56px;display:flex;align-items:center;font-weight:600;font-size:15px;letter-spacing:.2px;cursor:pointer;user-select:none;width:fit-content}
+  #log{
+    flex:1;overflow-y:auto;padding:6px 0 28px;display:flex;flex-direction:column;gap:24px;
+    padding-right:18px;scrollbar-gutter:stable;
+    scrollbar-width:thin;scrollbar-color:var(--line) transparent;
+  }
+  #log::-webkit-scrollbar{width:12px}
+  #log::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px;border:3px solid var(--bg)}
+  #log::-webkit-scrollbar-track{background:transparent}
+  .user{align-self:flex-end;max-width:72%;background:var(--bubble);padding:10px 15px;border-radius:17px 17px 5px 17px;white-space:pre-wrap;word-break:break-word}
+  .user img.thumb{max-width:220px;max-height:220px;border-radius:10px;display:block;margin:4px 0}
+  .user .filetag{font-size:12px;color:var(--muted);margin-top:6px}
+  .ai{max-width:100%;word-break:break-word}
+  .ai h3{margin:12px 0 6px;font-size:17px}
+  .ai pre{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:12px;overflow-x:auto;margin:10px 0}
+  .ai code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px}
+  .ai :not(pre)>code{background:var(--soft);padding:1px 5px;border-radius:5px}
+  .status{color:var(--muted);font-size:12px;display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:pulse 1.3s infinite}
+  @keyframes pulse{0%,100%{opacity:.25}50%{opacity:1}}
+  details{margin:6px 0 10px}
+  summary{cursor:pointer;color:var(--muted);font-size:13px;list-style:none;outline:none}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"▸ ";font-size:11px}
+  details[open] summary::before{content:"▾ "}
+  .think{color:var(--muted);font-size:13px;line-height:1.7;white-space:pre-wrap;padding:8px 0 0 14px;border-left:2px solid var(--line);margin-top:6px}
+  .sources a{color:var(--fg);text-decoration:none;font-size:13px;display:block;padding:5px 0;border-bottom:1px solid var(--line)}
+  .sources a span{display:block;color:var(--muted);font-size:11px}
+  .err{color:#b23a2e;font-size:14px;margin-top:8px}
+  footer{padding:6px 0 14px;position:relative}
+  .composer{display:flex;align-items:flex-end;gap:8px;border:1px solid var(--line);border-radius:24px;padding:7px 8px;background:var(--bg)}
+  .composer.disabled{opacity:.45;pointer-events:none}
+  .plus{width:34px;height:34px;border-radius:50%;border:0;background:transparent;color:var(--fg);font-size:22px;line-height:1;cursor:pointer;flex:none;padding-bottom:4px}
+  textarea{flex:1;resize:none;border:0;outline:none;background:transparent;color:var(--fg);font-family:inherit;font-size:16px;line-height:1.6;max-height:200px;padding:8px 6px}
+  .tools{display:flex;gap:6px;padding-bottom:5px}
+  .chip{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:11px;padding:6px 10px;font-size:12px;cursor:pointer;white-space:nowrap}
+  .chip.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+  .chip:disabled{opacity:.45;cursor:default}
+  .send{width:38px;height:38px;border-radius:50%;border:0;background:var(--fg);color:var(--bg);font-size:16px;cursor:pointer;flex:none}
+  .send:disabled{opacity:.45;cursor:default}
+  .meta{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:10px;padding:8px 6px 0}
+  .meta .left{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .meta .right{flex:none}
+  #menu{position:absolute;left:8px;bottom:78px;background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:6px;display:none;flex-direction:column;min-width:180px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:5}
+  #menu.open{display:flex}
+  #menu button{border:0;background:transparent;color:var(--fg);text-align:left;padding:10px 12px;border-radius:9px;font-size:14px;cursor:pointer}
+  #menu button:hover{background:var(--soft)}
+  #menu button small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+  .pending{display:flex;gap:8px;padding:0 6px 8px;flex-wrap:wrap}
+  .pending .pill{display:flex;align-items:center;gap:6px;background:var(--bubble);border-radius:10px;padding:5px 9px;font-size:12px}
+  .pending img{width:26px;height:26px;object-fit:cover;border-radius:6px}
+  .pending button{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:13px}
+  .editbox{
+    align-self:flex-end;width:50%;max-width:50%;background:var(--bubble);border:1px solid var(--fg);
+    border-radius:16px 16px 5px 16px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;
+  }
+  .editbox textarea{
+    background:transparent;color:var(--fg);border:0;outline:none;resize:none;
+    font-family:inherit;font-size:16px;line-height:1.6;padding:0;width:100%;min-height:44px;max-height:320px;overflow-y:auto;
+    flex:0 0 auto;display:block;
+  }
+  .edit-chips{display:flex;gap:8px;flex-wrap:wrap}
+  .edit-chips .pill{display:flex;align-items:center;gap:6px;background:var(--soft);border-radius:10px;padding:4px 8px;font-size:12px}
+  .edit-chips img{width:28px;height:28px;object-fit:cover;border-radius:6px}
+  .edit-chips button{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:13px}
+  .edit-bar{display:flex;gap:8px;align-items:center;justify-content:flex-end}
+  .edit-bar .chip{padding:4px 8px}
+  .modal-mask{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:60}
+  .modal{background:var(--bg);border:1px solid var(--line);border-radius:14px;width:min(720px,86vw);max-height:80vh;display:flex;flex-direction:column;padding:14px;gap:10px}
+  .modal-title{font-size:13px;color:var(--muted)}
+  .modal textarea{
+    min-height:240px;max-height:60vh;font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:13px;line-height:1.55;background:var(--soft);border-radius:8px;padding:10px;
+    color:var(--fg);border:1px solid var(--line);resize:vertical;outline:none;
+  }
+  .modal-bar{display:flex;gap:8px;justify-content:flex-end}
+  #drop{
+    position:fixed;inset:0;background:rgba(0,0,0,.42);color:#fff;font-size:18px;
+    display:none;align-items:center;justify-content:center;z-index:50;pointer-events:none;
+    letter-spacing:.5px;
+  }
+  #drop.show{display:flex}
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="brand">MiniDS</header>
+  <div id="log"></div>
+  <footer>
+    <div id="pending" class="pending"></div>
+    <div id="menu">
+      <button data-act="image">图片<small>JPEG / PNG / GIF / WebP</small></button>
+      <button data-act="file">文件<small>PDF / Word / Excel / PPT / 文本</small></button>
+      <button data-act="compress">压缩会话<small>保留最近 10 轮</small></button>
+    </div>
+    <div class="composer">
+      <button id="btnPlus" class="plus">＋</button>
+      <textarea id="input" rows="1" placeholder="发消息…"></textarea>
+      <div class="tools">
+        <button id="btnThink" class="chip">思考</button>
+        <button id="btnSearch" class="chip">联网</button>
+      </div>
+      <button id="btnSend" class="send">↑</button>
+    </div>
+    <div class="meta">
+      <span class="left" id="usage"></span>
+      <span class="right" id="model">deepseek-flash</span>
+    </div>
+    <input type="file" id="fileImage" accept="image/*" hidden>
+    <input type="file" id="fileAny" hidden>
+  </footer>
+</div>
+<div id="drop">松手即可上传</div>
+<script>
+(function () {
+  const log = document.getElementById('log');
+  const input = document.getElementById('input');
+  const btnSend = document.getElementById('btnSend');
+  const btnThink = document.getElementById('btnThink');
+  const btnSearch = document.getElementById('btnSearch');
+  const btnPlus = document.getElementById('btnPlus');
+  const menu = document.getElementById('menu');
+  const pendingBox = document.getElementById('pending');
+  const fileImage = document.getElementById('fileImage');
+  const fileAny = document.getElementById('fileAny');
+  const usageEl = document.getElementById('usage');
+  const modelEl = document.getElementById('model');
+
+  let streaming = false;
+  let thinkOn = false;
+  let searchOn = false;
+  let attachments = [];
+  let editing = false;
+  let editPaste = null;     // 编辑框打开时，图片/文件粘贴走这里
+  let textModalOpen = false;
+  const composerEl = document.querySelector('.composer');
+
+  // 编辑消息时把底部输入框置灰锁住
+  function setEditing(on) {
+    editing = on;
+    if (!on) editPaste = null;
+    composerEl.classList.toggle('disabled', on);
+    input.disabled = on;
+    btnPlus.disabled = on;
+    btnThink.disabled = on;
+    btnSearch.disabled = on;
+    btnSend.disabled = on || streaming;
+  }
+
+  // 主题：默认浅色，点击标题切换，记住选择；不跟随系统
+  const saved = localStorage.getItem('minids-theme');
+  if (saved === 'dark') document.documentElement.classList.add('dark');
+  document.getElementById('brand').onclick = () => {
+    const dark = document.documentElement.classList.toggle('dark');
+    localStorage.setItem('minids-theme', dark ? 'dark' : 'light');
+  };
+
+  btnThink.onclick = () => {
+    thinkOn = !thinkOn;
+    btnThink.classList.toggle('on', thinkOn);
+    pushSettings();
+  };
+  btnSearch.onclick = () => {
+    searchOn = !searchOn;
+    btnSearch.classList.toggle('on', searchOn);
+    pushSettings();
+  };
+
+  function pushSettings() {
+    fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ thinking: thinkOn, search: searchOn })
+    }).catch(() => {});
+  }
+
+  // 与手机端设置双向同步：手机一改就由长轮询立刻醒来，无定时查询
+  function applySettings(s) {
+    const t = !!s.thinking;
+    const q = !!s.search;
+    if (t !== thinkOn) { thinkOn = t; btnThink.classList.toggle('on', t); }
+    if (q !== searchOn) { searchOn = q; btnSearch.classList.toggle('on', q); }
+  }
+
+  async function watchSettings() {
+    let rev = 0;
+    try {
+      const s = await fetch('/api/settings').then(r => r.json());
+      rev = s.rev || 0;
+      applySettings(s);
+    } catch (e) {
+      return;
+    }
+    while (true) {
+      let s;
+      try {
+        s = await fetch('/api/wait?rev=' + rev).then(r => r.json());
+      } catch (e) {
+        return;
+      }
+      rev = s.rev || rev;
+      applySettings(s);
+    }
+  }
+  btnPlus.onclick = e => { e.stopPropagation(); menu.classList.toggle('open'); };
+  document.addEventListener('click', () => menu.classList.remove('open'));
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  function md(text) {
+    const parts = String(text).split('```');
+    return parts.map((part, i) => {
+      if (i % 2 === 1) {
+        const nl = part.indexOf('\n');
+        const body = nl >= 0 ? part.slice(nl + 1) : part;
+        return '<pre><code>' + esc(body.replace(/^\n+|\n+$/g, '')) + '</code></pre>';
+      }
+      let h = esc(part);
+      h = h.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+      h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+      h = h.replace(/^#{1,6}\s+(.*)$/gm, '<h3>$1</h3>');
+      h = h.replace(/^[-*]\s+(.*)$/gm, '· $1');
+      h = h.replace(/\n/g, '<br>');
+      return h;
+    }).join('');
+  }
+
+  function scroll() { log.scrollTop = log.scrollHeight; }
+
+  function addUser(text, atts, msg) {
+    const el = document.createElement('div');
+    el.className = 'user';
+    if (text) el.appendChild(document.createTextNode(text));
+    (atts || []).forEach(a => {
+      if (a.isImage && a.fileId) {
+        const img = document.createElement('img');
+        img.className = 'thumb';
+        img.src = a.localUrl || ('/api/image?id=' + encodeURIComponent(a.fileId));
+        img.alt = a.name || '图片';
+        el.appendChild(img);
+      } else {
+        const tag = document.createElement('div');
+        tag.className = 'filetag';
+        tag.textContent = '📄 ' + (a.name || '文件');
+        el.appendChild(tag);
+      }
+    });
+    if (msg && msg.id) {
+      el.style.cursor = 'pointer';
+      el.title = '点击修改';
+      el.onclick = () => openEditor(msg, el);
+    }
+    log.appendChild(el);
+    scroll();
+  }
+
+  function addAssistant(data) {
+    const root = document.createElement('div');
+    root.className = 'ai';
+
+    const status = document.createElement('div');
+    status.className = 'status';
+    status.style.display = 'none';
+    const dot = document.createElement('div');
+    dot.className = 'dot';
+    const statusText = document.createElement('span');
+    status.append(dot, statusText);
+    root.appendChild(status);
+
+    const thinkBox = document.createElement('details');
+    const thinkSum = document.createElement('summary');
+    thinkSum.textContent = '思考中';
+    const thinkBody = document.createElement('div');
+    thinkBody.className = 'think';
+    thinkBox.append(thinkSum, thinkBody);
+    thinkBox.style.display = 'none';
+    root.appendChild(thinkBox);
+
+    const body = document.createElement('div');
+    root.appendChild(body);
+
+    const srcBox = document.createElement('details');
+    srcBox.className = 'sources';
+    const srcSum = document.createElement('summary');
+    const srcList = document.createElement('div');
+    srcBox.append(srcSum, srcList);
+    srcBox.style.display = 'none';
+    root.appendChild(srcBox);
+
+    log.appendChild(root);
+    scroll();
+
+    const api = {
+      root, status, statusText, thinkBox, thinkSum, thinkBody, body, srcBox, srcSum, srcList,
+      think: '', text: '', sources: [],
+      raf: 0,
+      render() {
+        body.innerHTML = md(this.text);
+        if (this.think) {
+          thinkBody.textContent = this.think;
+          thinkSum.textContent = streaming ? '● 思考中' : '已深度思考';
+        }
+        if (this.sources.length) {
+          srcSum.textContent = '参考来源 ' + this.sources.length;
+          srcList.innerHTML = this.sources.map(s =>
+            '<a href="' + esc(s.url) + '" target="_blank" rel="noreferrer">' +
+            esc(s.title || s.url) + '<span>' + esc(s.site || s.url) + '</span></a>'
+          ).join('');
+        }
+        scroll();
+      },
+      // 合并渲染：一帧最多渲染一次，避免每个 token 都重排整段 markdown
+      schedule() {
+        if (api.raf) return;
+        api.raf = requestAnimationFrame(() => {
+          api.raf = 0;
+          api.render();
+        });
+      }
+    };
+    return api;
+  }
+
+  function renderPending() {
+    pendingBox.innerHTML = '';
+    attachments.forEach((a, i) => {
+      const pill = document.createElement('div');
+      pill.className = 'pill';
+      if (a.localUrl) {
+        const img = document.createElement('img');
+        img.src = a.localUrl;
+        pill.appendChild(img);
+      }
+      const name = document.createElement('span');
+      name.textContent = a.name.length > 22 ? a.name.slice(0, 22) + '…' : a.name;
+      const x = document.createElement('button');
+      x.textContent = '×';
+      x.onclick = () => { attachments.splice(i, 1); renderPending(); };
+      pill.append(name, x);
+      pendingBox.appendChild(pill);
+    });
+  }
+
+  async function uploadFile(file) {
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: {
+        'Content-Type': file.type || 'application/octet-stream',
+        'X-Filename': encodeURIComponent(file.name)
+      },
+      body: file
+    });
+    const data = await res.json();
+    if (data.error) { alert('上传失败：' + data.error); return; }
+    attachments.push({
+      fileId: data.fileId,
+      name: data.name,
+      isImage: data.isImage,
+      localPath: data.localPath || null,
+      localUrl: data.isImage ? URL.createObjectURL(file) : null
+    });
+    renderPending();
+  }
+
+  menu.querySelectorAll('button').forEach(btn => {
+    btn.onclick = async () => {
+      menu.classList.remove('open');
+      const act = btn.dataset.act;
+      if (act === 'image') fileImage.click();
+      else if (act === 'file') fileAny.click();
+      else if (act === 'compress') {
+        const r = await fetch('/api/compress', { method: 'POST' }).then(x => x.json()).catch(() => ({}));
+        if (r.ok) reload();
+        else alert('压缩失败');
+      }
+    };
+  });
+
+  fileImage.onchange = () => { if (fileImage.files[0]) uploadFile(fileImage.files[0]); fileImage.value = ''; };
+  fileAny.onchange = () => { if (fileAny.files[0]) uploadFile(fileAny.files[0]); fileAny.value = ''; };
+
+  // Ctrl+V：图片直接上传；超长文本自动转成 txt 附件。编辑框里也支持贴图。
+  document.addEventListener('paste', e => {
+    const cd = e.clipboardData;
+    if (!cd) return;
+
+    const files = [];
+    for (const item of cd.items) {
+      if (item.kind === 'file') {
+        const f = item.getAsFile();
+        if (f) files.push(f);
+      }
+    }
+    if (files.length) {
+      if (textModalOpen) return;      // 在 txt 编辑弹窗里，别抢粘贴
+      if (editing) {
+        if (!editPaste) return;
+        e.preventDefault();
+        files.forEach(editPaste);
+        return;
+      }
+      e.preventDefault();
+      files.forEach(uploadFile);
+      return;
+    }
+
+    if (editing) return;              // 编辑框里的文字粘贴交给浏览器默认行为
+
+    const text = cd.getData('text/plain');
+    if (!text) return;
+    const lines = text.split('\n').length;
+    if (text.length > 2000 || lines > 40) {
+      e.preventDefault();
+      const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+      const file = new File([text], 'text-' + stamp + '.txt', { type: 'text/plain;charset=utf-8' });
+      uploadFile(file);
+    }
+  });
+
+  // 拖拽文件到页面直接上传
+  const dropMask = document.getElementById('drop');
+  let dragDepth = 0;
+  window.addEventListener('dragenter', e => {
+    e.preventDefault();
+    dragDepth++;
+    dropMask.classList.add('show');
+  });
+  window.addEventListener('dragover', e => e.preventDefault());
+  window.addEventListener('dragleave', e => {
+    e.preventDefault();
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) dropMask.classList.remove('show');
+  });
+  window.addEventListener('drop', e => {
+    e.preventDefault();
+    dragDepth = 0;
+    dropMask.classList.remove('show');
+    const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []);
+    if (editing) {
+      if (editPaste) files.forEach(editPaste);
+      return;
+    }
+    files.forEach(uploadFile);
+  });
+
+  function applyEvent(a, ev) {
+    if (ev.type === 'think') {
+      a.thinkBox.style.display = 'block';
+      a.think += ev.data;
+    } else if (ev.type === 'text') {
+      a.text += ev.data;
+      a.status.style.display = 'none';
+      if (a.think) { a.thinkSum.textContent = '已深度思考'; a.thinkBox.open = false; }
+    } else if (ev.type === 'status') {
+      a.status.style.display = 'flex';
+      a.statusText.textContent = ev.data;
+    } else if (ev.type === 'sources') {
+      try { a.sources = JSON.parse(ev.data); } catch (e) { a.sources = []; }
+      if (a.sources.length) a.srcBox.style.display = 'block';
+    } else if (ev.type === 'usage') {
+      usageEl.textContent = ev.data;
+    } else if (ev.type === 'done') {
+      if (ev.data) {
+        const err = document.createElement('div');
+        err.className = 'err';
+        err.textContent = ev.data;
+        a.root.appendChild(err);
+      }
+      a.status.style.display = 'none';
+    }
+  }
+
+  // SSE：服务端一个事件一个事件推，收到就渲染；断了就从最后一个 id 续上
+  function consumeSse(a) {
+    return new Promise(resolve => {
+      let last = -1;
+      let done = false;
+      let timer = 0;
+      const es = new EventSource('/api/stream');
+      const bail = () => {
+        clearTimeout(timer);
+        es.close();
+        resolve({ last, done });
+      };
+      const arm = () => {
+        clearTimeout(timer);
+        timer = setTimeout(bail, 10000);
+      };
+      arm();
+      es.onmessage = e => {
+        const id = parseInt(e.lastEventId, 10);
+        if (!isNaN(id)) last = id;
+        let ev;
+        try { ev = JSON.parse(e.data); } catch (_) { return; }
+        applyEvent(a, ev);
+        a.schedule();
+        arm();
+        if (ev.type === 'done') { done = true; bail(); }
+      };
+      es.onerror = () => { /* 浏览器自己会重连，10 秒没消息就降级成轮询 */ };
+    });
+  }
+
+  async function consumePoll(a, from) {
+    let doneFlag = false;
+    while (!doneFlag) {
+      const st = await fetch('/api/poll?from=' + from).then(r => r.json());
+      let touched = false;
+      for (const ev of (st.events || [])) {
+        applyEvent(a, ev);
+        if (ev.type === 'done') doneFlag = true;
+        touched = true;
+      }
+      if (touched) a.schedule();
+      const fresh = st.next !== from;
+      from = st.next;
+      doneFlag = doneFlag || st.done;
+      // 服务端是长轮询：有新事件会立刻返回，不需要客户端定时器
+      if (!doneFlag && !fresh) await new Promise(r => setTimeout(r, 80));
+    }
+  }
+
+  async function consume(a) {
+    let from = 0;
+    if (window.EventSource) {
+      const r = await consumeSse(a);
+      from = r.last + 1;
+      if (r.done) { a.schedule(); return; }
+    }
+    await consumePoll(a, from);
+  }
+
+  async function openTextEditor(att, onSaved) {
+    const mask = document.createElement('div');
+    mask.className = 'modal-mask';
+    const panel = document.createElement('div');
+    panel.className = 'modal';
+    const title = document.createElement('div');
+    title.className = 'modal-title';
+    title.textContent = (att.name || '文本') + ' · 可直接编辑，保存后随消息上传';
+    const ta = document.createElement('textarea');
+    ta.value = '读取中…';
+    const bar = document.createElement('div');
+    bar.className = 'modal-bar';
+    const cancel = document.createElement('button');
+    cancel.className = 'chip';
+    cancel.textContent = '取消';
+    const save = document.createElement('button');
+    save.className = 'chip on';
+    save.textContent = '保存';
+    bar.append(cancel, save);
+    panel.append(title, ta, bar);
+    mask.appendChild(panel);
+    document.body.appendChild(mask);
+    textModalOpen = true;
+    function close() {
+      textModalOpen = false;
+      mask.remove();
+    }
+    mask.addEventListener('click', e => { if (e.target === mask) close(); });
+    cancel.onclick = close;
+
+    try {
+      const res = await fetch('/api/file?id=' + encodeURIComponent(att.fileId));
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      ta.value = await res.text();
+    } catch (e) {
+      ta.value = '';
+      alert('读取失败：' + e.message);
+    }
+
+    save.onclick = async () => {
+      if (save.disabled) return;
+      save.disabled = true;
+      save.textContent = '保存中…';
+      try {
+        const rawName = att.name || '文本';
+        const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+        const ascii = 'text-' + stamp + '.txt';
+        const name = /^[\x20-\x7e]+$/.test(rawName) ? rawName : ascii;
+        const file = new File([ta.value], name, { type: 'text/plain;charset=utf-8' });
+        // mode=local：只落手机本地，立刻返回；真正上传等到发送时
+        const res = await fetch('/api/upload?mode=local', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'X-Filename': encodeURIComponent(name)
+          },
+          body: file
+        });
+        const d = await res.json();
+        if (d.error) throw new Error(d.error);
+        close();
+        onSaved({
+          fileId: d.fileId,
+          name: d.name,
+          isImage: false,
+          localPath: d.localPath || null
+        });
+      } catch (e) {
+        alert('保存失败：' + e.message);
+        save.disabled = false;
+        save.textContent = '保存';
+      }
+    };
+  }
+
+  async function openEditor(m, el) {
+    if (streaming) return;
+    setEditing(true);
+    let atts = (m.attachments || []).slice();
+
+    const box = document.createElement('div');
+    box.className = 'editbox';
+
+    const chips = document.createElement('div');
+    chips.className = 'edit-chips';
+
+    const ta = document.createElement('textarea');
+    ta.value = m.text || '';
+    ta.rows = 2;
+
+    const bar = document.createElement('div');
+    bar.className = 'edit-bar';
+    const cancel = document.createElement('button');
+    cancel.className = 'chip';
+    cancel.textContent = '取消';
+    const spacer = document.createElement('span');
+    spacer.style.flex = '1';
+    const plus = document.createElement('button');
+    plus.className = 'chip';
+    plus.textContent = '＋';
+    plus.title = '添加图片';
+    const save = document.createElement('button');
+    save.className = 'send';
+    save.style.width = '32px';
+    save.style.height = '32px';
+    save.textContent = '↑';
+    bar.append(cancel, spacer, plus, save);
+    box.append(chips, ta, bar);
+    el.replaceWith(box);
+    ta.focus();
+
+    function autoSize() {
+      ta.style.height = '1px';
+      ta.style.height = (ta.scrollHeight + 2) + 'px';
+      ta.scrollTop = 0;
+    }
+    ta.addEventListener('input', autoSize);
+    requestAnimationFrame(autoSize);
+    setTimeout(autoSize, 60);
+    ta.scrollTop = 0;
+
+    function renderChips() {
+      chips.innerHTML = '';
+      atts.forEach((a, i) => {
+        const pill = document.createElement('div');
+        pill.className = 'pill';
+        if (a.isImage && a.fileId) {
+          const img = document.createElement('img');
+          img.src = '/api/image?id=' + encodeURIComponent(a.fileId);
+          pill.appendChild(img);
+        }
+        const name = document.createElement('span');
+        name.textContent = a.name || '文件';
+        const x = document.createElement('button');
+        x.textContent = '×';
+        x.onclick = ev => { ev.stopPropagation(); atts.splice(i, 1); renderChips(); };
+        pill.append(name, x);
+        if (!a.isImage && a.fileId) {
+          pill.style.cursor = 'pointer';
+          pill.title = '点击编辑内容';
+          pill.onclick = ev => {
+            if (ev.target.tagName === 'BUTTON') return;
+            openTextEditor(a, updated => { atts[i] = updated; renderChips(); });
+          };
+        }
+        chips.appendChild(pill);
+      });
+    }
+    renderChips();
+
+    async function addFile(f) {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': f.type || 'application/octet-stream',
+          'X-Filename': encodeURIComponent(f.name)
+        },
+        body: f
+      });
+      const d = await res.json();
+      if (d.error) { alert('上传失败：' + d.error); return; }
+      atts.push({ fileId: d.fileId, name: d.name, isImage: d.isImage, localPath: d.localPath || null });
+      renderChips();
+    }
+    editPaste = addFile;
+
+    plus.onclick = () => {
+      const pick = document.createElement('input');
+      pick.type = 'file';
+      pick.onchange = () => { const f = pick.files[0]; if (f) addFile(f); };
+      pick.click();
+    };
+
+    cancel.onclick = () => { editPaste = null; setEditing(false); reload(); };
+
+    save.onclick = async () => {
+      const text = ta.value.trim();
+      if (!text && !atts.length) return;
+      save.disabled = true;
+      try {
+        const res = await fetch('/api/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({
+            text: text,
+            thinking: thinkOn,
+            search: searchOn,
+            attachments: atts,
+            editId: m.id
+          })
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        await reload();
+        editPaste = null;
+        setEditing(false);
+        const a = addAssistant();
+        a.status.style.display = 'flex';
+        a.statusText.textContent = '正在生成';
+        streaming = true;
+        btnSend.disabled = true;
+        try {
+          await consume(a);
+        } finally {
+          streaming = false;
+          btnSend.disabled = false;
+          a.status.style.display = 'none';
+          a.render();
+        }
+      } catch (e) {
+        alert('修改失败：' + e.message);
+        save.disabled = false;
+      }
+    };
+  }
+
+  async function send() {
+    if (editing) return;
+    const text = input.value.trim();
+    if ((!text && !attachments.length) || streaming) return;
+    const atts = attachments.map(a => ({
+      fileId: a.fileId, name: a.name, isImage: a.isImage,
+      localPath: a.localPath, localUrl: a.localUrl
+    }));
+    input.value = '';
+    input.style.height = 'auto';
+    addUser(text, atts);
+    attachments = [];
+    renderPending();
+
+    const a = addAssistant();
+    a.status.style.display = 'flex';
+    a.statusText.textContent = '正在生成';
+    streaming = true;
+    btnSend.disabled = true;
+
+    try {
+      const res = await fetch('/api/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({ text, thinking: thinkOn, search: searchOn, attachments: atts })
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+
+      await consume(a);
+    } catch (e) {
+      const err = document.createElement('div');
+      err.className = 'err';
+      err.textContent = '连接中断：' + e.message;
+      a.root.appendChild(err);
+    } finally {
+      streaming = false;
+      btnSend.disabled = false;
+      a.status.style.display = 'none';
+      if (a.think) a.thinkSum.textContent = '已深度思考';
+      a.render();
+      input.focus();
+      // 重新拉取一次，让这条消息带上服务端 id，之后才能点击编辑
+      reload();
+    }
+  }
+
+  btnSend.onclick = send;
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 200) + 'px';
+  });
+
+  function reload() {
+    return fetch('/api/state').then(r => r.json()).then(state => {
+      log.innerHTML = '';
+      usageEl.textContent = state.usage || '';
+      modelEl.textContent = state.model || 'deepseek-flash';
+      (state.messages || []).forEach(m => {
+        if (m.role === 'user') {
+          addUser(m.text || '', m.attachments || [], m);
+        } else if (m.role === 'assistant') {
+          if (!m.text && !m.reasoning) return;
+          const a = addAssistant();
+          if (m.reasoning) {
+            a.think = m.reasoning;
+            a.thinkBox.style.display = 'block';
+            a.thinkSum.textContent = '已深度思考';
+          }
+          a.text = m.text || '';
+          a.sources = m.sources || [];
+          if (a.sources.length) a.srcBox.style.display = 'block';
+          a.render();
+        }
+      });
+      scroll();
+    }).catch(() => {});
+  }
+
+  reload().then(() => input.focus());
+  watchSettings();
+})();
+</script>
+</body>
+</html>

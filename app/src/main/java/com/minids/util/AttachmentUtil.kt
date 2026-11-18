@@ -42,8 +42,30 @@ object AttachmentUtil {
         val lower = name.lowercase()
         val needsParsing = listOf(".pdf", ".doc", ".docx", ".ppt", ".pptx").any { lower.endsWith(it) }
         val purpose = if (needsParsing) "text_recognition" else "user_data"
+        val dir = File(app.filesDir, "uploads").apply { mkdirs() }
+        val ext = name.substringAfterLast('.', "bin").take(8)
+
+        // 文本统一转成 UTF-8：记事本存的 GBK/ANSI 直接上传，模型读到的就是乱码
+        if (TextCodec.isText(mime, name) && (size <= 0 || size < 8L * 1024 * 1024)) {
+            val raw = resolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: throw IllegalStateException("无法读取这个文件")
+            val normalized = TextCodec.utf8(TextCodec.decode(raw))
+            val fileId = DeepSeekApi.uploadBytes(key, normalized, name, mime, purpose)
+            val out = File(dir, "u_${System.currentTimeMillis()}.$ext")
+            out.writeBytes(normalized)
+            return Attachment(fileId = fileId, name = name, isImage = false, localPath = out.absolutePath)
+        }
+
         val fileId = DeepSeekApi.uploadStream(key, uri, resolver, name, mime, size, purpose)
-        return Attachment(fileId = fileId, name = name, isImage = false, localPath = null)
+        // 本地留一份，网页端才能读回并再次编辑
+        val local = runCatching {
+            val out = File(dir, "u_${System.currentTimeMillis()}.$ext")
+            resolver.openInputStream(uri)?.use { input ->
+                out.outputStream().use { input.copyTo(it) }
+            }
+            out.absolutePath
+        }.getOrNull()
+        return Attachment(fileId = fileId, name = name, isImage = false, localPath = local)
     }
 
     private fun decode(uri: Uri, resolver: android.content.ContentResolver): Bitmap? {

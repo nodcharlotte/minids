@@ -2,6 +2,7 @@ package com.minids.net
 
 import android.content.ContentResolver
 import android.net.Uri
+import com.minids.data.Attachment
 import com.minids.data.Msg
 import com.minids.data.Source
 import kotlinx.coroutines.Dispatchers
@@ -35,12 +36,11 @@ import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okio.BufferedSink
 import okio.source
+import com.minids.util.TextCodec
+import java.io.File
 import java.io.IOException
 import java.time.DayOfWeek
 import java.time.LocalDateTime
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 class ApiException(val code: Int, override val message: String) : IOException(message)
@@ -84,6 +84,39 @@ object DeepSeekApi {
                 .build()
             postFile(key, multipart)
         }
+
+    suspend fun uploadBytes(
+        key: String,
+        bytes: ByteArray,
+        name: String,
+        mime: String,
+        purpose: String
+    ): String = withContext(Dispatchers.IO) {
+        val isText = mime.startsWith("text/", true)
+        // 文本一律按 UTF-8 上传，并在开头加 BOM：
+        // 服务端对“ASCII 开头 + 少量中文”的 txt 会误判成本地编码，加 BOM 就不会认错。
+        val body = if (isText) withUtf8Bom(bytes) else bytes
+        val type = if (isText && !mime.contains("charset", true)) "$mime; charset=utf-8" else mime
+        val multipart = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("purpose", purpose)
+            .addFormDataPart("file", name, body.toRequestBody(type.toMediaTypeOrNull()))
+            .build()
+        postFile(key, multipart)
+    }
+
+    private fun withUtf8Bom(bytes: ByteArray): ByteArray {
+        if (bytes.size >= 3 &&
+            bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()
+        ) {
+            return bytes
+        }
+        val out = ByteArray(bytes.size + 3)
+        out[0] = 0xEF.toByte()
+        out[1] = 0xBB.toByte()
+        out[2] = 0xBF.toByte()
+        bytes.copyInto(out, 3)
+        return out
+    }
 
     suspend fun uploadStream(
         key: String,
@@ -176,17 +209,20 @@ object DeepSeekApi {
         thinking: Boolean,
         search: Boolean
     ): Flow<Ev> = callbackFlow {
-        val payload = buildBody(messages, thinking, search)
-        val req = Request.Builder()
-            .url("$BASE/chat/completions")
-            .header("Authorization", "Bearer $key")
-            .header("Accept", "text/event-stream")
-            .post(payload.toRequestBody("application/json".toMediaType()))
-            .build()
+        val inflight = java.util.concurrent.atomic.AtomicReference<okhttp3.Call?>(null)
 
-        val call = client.newCall(req)
         val job = launch(Dispatchers.IO) {
             try {
+                // 文本附件要读本地文件，放到 IO 线程里拼请求体
+                val payload = buildBody(messages, thinking, search)
+                val req = Request.Builder()
+                    .url("$BASE/chat/completions")
+                    .header("Authorization", "Bearer $key")
+                    .header("Accept", "text/event-stream")
+                    .post(payload.toRequestBody("application/json".toMediaType()))
+                    .build()
+                val call = client.newCall(req)
+                inflight.set(call)
                 call.execute().use { resp ->
                     if (!resp.isSuccessful) {
                         val body = resp.body?.string().orEmpty()
@@ -219,7 +255,7 @@ object DeepSeekApi {
         }
 
         awaitClose {
-            call.cancel()
+            inflight.getAndSet(null)?.cancel()
             job.cancel()
         }
     }
@@ -271,16 +307,9 @@ object DeepSeekApi {
         return "${now.toLocalDate()},$weekday,,App,中文"
     }
 
-    private fun nowLine(): String {
-        val now = LocalDateTime.now()
-        val fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm EEEE", Locale.CHINA)
-        return "${now.format(fmt)}，${ZoneId.systemDefault().id}"
-    }
-
     private fun messageJson(m: Msg, isLastUser: Boolean = false): JsonObject = buildJsonObject {
         put("role", m.role)
-        val note = if (isLastUser) "\n\n（客户端时间：${nowLine()}）" else ""
-        val body = (m.text + note).trim()
+        val body = m.text.trim()
 
         if (m.role == "user" && m.attachments.isNotEmpty()) {
             put("content", buildJsonArray {
@@ -291,9 +320,19 @@ object DeepSeekApi {
                     }
                 }
                 m.attachments.forEach { a ->
-                    addJsonObject {
-                        put("type", "file")
-                        put("file_id", a.fileId)
+                    val inline = inlineText(a)
+                    if (inline != null) {
+                        // 直接把文本内容放进消息，不交给服务端猜编码：
+                        // “1+1=6 换行 + 中文”的 txt 会被它误判成本地编码，读出来是乱码
+                        addJsonObject {
+                            put("type", "text")
+                            put("text", "【附件 ${a.name}】\n$inline")
+                        }
+                    } else {
+                        addJsonObject {
+                            put("type", "file")
+                            put("file_id", a.fileId)
+                        }
                     }
                 }
             })
@@ -307,6 +346,16 @@ object DeepSeekApi {
             }
         }
     }
+
+    /** 有本地副本的文本附件：直接内联进消息，最多 1 MiB。 */
+    private fun inlineText(a: Attachment): String? = runCatching {
+        if (a.isImage || !TextCodec.isTextName(a.name)) return@runCatching null
+        val path = a.localPath ?: return@runCatching null
+        val file = File(path)
+        if (!file.isFile || file.length() > 1_048_576L) return@runCatching null
+        val text = TextCodec.decode(file.readBytes())
+        if (text.isBlank()) null else text
+    }.getOrNull()
 
     private fun parse(raw: String): List<Ev> {
         val out = mutableListOf<Ev>()

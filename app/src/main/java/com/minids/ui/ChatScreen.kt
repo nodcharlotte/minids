@@ -37,8 +37,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -76,8 +79,10 @@ import com.minids.UiState
 import com.minids.data.Attachment
 import com.minids.data.Msg
 import com.minids.data.Source
+import com.minids.util.TextCodec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 
 private enum class Sheet { None, Add, Settings }
 
@@ -147,7 +152,8 @@ fun ChatScreen(vm: ChatViewModel) {
                                 },
                                 onRemove = vm::removeEditAttachment,
                                 onSend = vm::submitEdit,
-                                onCancel = vm::cancelEdit
+                                onCancel = vm::cancelEdit,
+                                onEditFile = { att, text, done -> vm.replaceEditAttachment(att.fileId, text, done) }
                             )
                         } else {
                             MessageRow(
@@ -198,7 +204,8 @@ fun ChatScreen(vm: ChatViewModel) {
             onSearch = vm::saveSearch,
             onDark = vm::saveDark,
             onLoadBalance = vm::loadBalance,
-            onModelRefresh = vm::refreshModelName
+            onModelRefresh = vm::refreshModelName,
+            onWeb = vm::setWeb
         )
 
         Sheet.None -> Unit
@@ -654,8 +661,10 @@ private fun EditBox(
     onAddImage: () -> Unit,
     onRemove: (String) -> Unit,
     onSend: () -> Unit,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    onEditFile: (Attachment, String, (Boolean) -> Unit) -> Unit
 ) {
+    var editingFile by remember { mutableStateOf<Attachment?>(null) }
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
         if (state.editingAttachments.isNotEmpty()) {
             Row(
@@ -664,7 +673,13 @@ private fun EditBox(
             ) {
                 state.editingAttachments.forEach { a ->
                     Box {
-                        if (a.isImage) Thumb(a.localPath, 72.dp) else FileChip(a.name, 72.dp)
+                        if (a.isImage) {
+                            Thumb(a.localPath, 72.dp)
+                        } else {
+                            Box(Modifier.clickable { editingFile = a }) {
+                                FileChip(a.name, 72.dp)
+                            }
+                        }
                         Box(
                             Modifier
                                 .align(Alignment.TopEnd)
@@ -744,6 +759,92 @@ private fun EditBox(
             }
         }
     }
+
+    editingFile?.let { att ->
+        TextFileDialog(
+            att = att,
+            onDismiss = { editingFile = null },
+            onSave = { text, done -> onEditFile(att, text, done) }
+        )
+    }
+}
+
+@Composable
+private fun TextFileDialog(
+    att: Attachment,
+    onDismiss: () -> Unit,
+    onSave: (String, (Boolean) -> Unit) -> Unit
+) {
+    var text by remember(att.fileId) { mutableStateOf("") }
+    var loaded by remember(att.fileId) { mutableStateOf(false) }
+    var saving by remember(att.fileId) { mutableStateOf(false) }
+    LaunchedEffect(att.fileId) {
+        text = withContext(Dispatchers.IO) {
+            runCatching {
+                val bytes = File(att.localPath.orEmpty()).readBytes()
+                TextCodec.decode(bytes)
+            }.getOrDefault("")
+        }
+        loaded = true
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(att.name, fontSize = 15.sp, maxLines = 1) },
+        text = {
+            if (!loaded) {
+                Text("读取中…", fontSize = 13.sp)
+            } else {
+                BasicTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(260.dp)
+                        .verticalScroll(rememberScrollState()),
+                    textStyle = TextStyle(
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface)
+                )
+            }
+        },
+        confirmButton = {
+            val enabled = loaded && !saving
+            Text(
+                if (saving) "保存中…" else "保存",
+                fontSize = 14.sp,
+                color = if (enabled) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                },
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(enabled = enabled) {
+                        saving = true
+                        onSave(text) { ok ->
+                            saving = false
+                            if (ok) onDismiss()
+                        }
+                    }
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            )
+        },
+        dismissButton = {
+            Text(
+                "取消",
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onDismiss)
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            )
+        }
+    )
 }
 
 /* ---------------- 小组件 ---------------- */
