@@ -38,6 +38,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -303,7 +304,9 @@ private fun UserMessage(m: Msg, onEdit: () -> Unit) {
                     .clickable(onClick = onEdit)
                     .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
-                Text(m.text, fontSize = 16.sp, lineHeight = 23.sp)
+                SelectionContainer {
+                    Text(m.text, fontSize = 16.sp, lineHeight = 23.sp)
+                }
             }
         }
     }
@@ -334,7 +337,9 @@ private fun AssistantMessage(m: Msg, streaming: Boolean, thinkingOn: Boolean) {
         }
 
         if (m.text.isNotBlank()) {
-            Markdown(m.text)
+            SelectionContainer {
+                Markdown(m.text)
+            }
         } else if (streaming && m.reasoning.isEmpty() && m.searchStatus == null && !thinkingOn) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Dot(true)

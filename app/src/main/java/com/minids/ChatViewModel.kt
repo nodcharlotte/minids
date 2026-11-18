@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.File
 import java.util.Locale
 import java.util.UUID
 
@@ -328,6 +329,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
         runTurn(truncated)
+        cleanupImages()
     }
 
     /* ---------------- 新建 / 压缩 ---------------- */
@@ -350,6 +352,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
         repo.clear()
+        cleanupImages()
     }
 
     fun compress() {
@@ -411,6 +414,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     it.copy(chat = Chat(messages = listOf(summary) + tail, updatedAt = now()))
                 }
                 persist()
+                cleanupImages()
                 notice("已压缩，保留最近 $KEEP_ROUNDS 轮")
             } catch (e: Exception) {
                 notice((e as? ApiException)?.message ?: "压缩失败：${e.message ?: "未知错误"}")
@@ -445,6 +449,19 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private fun persist() {
         val chat = _state.value.chat
         io.launch { repo.save(chat) }
+    }
+
+    /** 删除不再被任何消息引用的图片，避免历史/压缩后留下垃圾。 */
+    private fun cleanupImages() {
+        val keep = _state.value.chat.messages
+            .flatMap { it.attachments }
+            .mapNotNull { it.localPath }
+            .toSet()
+        runCatching {
+            File(getApplication<Application>().filesDir, "images")
+                .listFiles()
+                ?.forEach { f -> if (f.absolutePath !in keep) f.delete() }
+        }
     }
 
     /**

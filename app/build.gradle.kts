@@ -50,15 +50,15 @@ android {
         }
     }
 
-    // 产物统一叫 MiniDS.apk（版本号由人工重命名维护）
+    // 产物名带版本号：MiniDS-v1.1.apk
     applicationVariants.all {
+        val vName = versionName
         outputs.all {
             if (this is com.android.build.gradle.internal.api.BaseVariantOutputImpl) {
-                outputFileName = "MiniDS.apk"
+                outputFileName = "MiniDS-v$vName.apk"
             }
         }
     }
-
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
