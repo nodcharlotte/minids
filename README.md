@@ -1,0 +1,98 @@
+# MiniDS
+
+一个极简的安卓聊天客户端，直接调用 DeepSeek 官方 API。
+
+> 非官方项目，与 DeepSeek（深度求索）无关，仅使用其公开 API。
+> 本项目的代码由 AI 生成；应用图标由 Gemini 生成。
+
+## 为什么做这个
+
+2026 年 11 月 16 日起，DeepSeek App 与网页版开始限制免费用户的使用额度：
+长对话、每日用量、单次输入长度同时收紧，抵达上限便会收到
+
+> 你好，请等会儿再来吧
+> 服务器繁忙，使用额度已达上限
+
+需次日凌晨恢复额度。这次限额针对的是 App / 网页端，**API 不受影响**。
+
+MiniDS 因此只做一件事：把对话直接放到官方 API 上——用自己的 API Key、
+按量计费，不再受 C 端每日额度的约束（API 有自己的速率与计费规则）。
+
+## 下载安装
+
+- 从 [Releases](https://github.com/nodcharlotte/minids/releases) 下载 `MiniDS-1.0.apk`
+- 安装时需允许「未知来源」
+- 首次打开在设置里填入 **DeepSeek 官方 API Key**
+- SHA-256：`E02A2FC76BB086AC0C22A63DCF84C0BA7BEEC881C824DFDD0BC5CC50327CD958`
+
+## 功能
+
+- 流式对话（SSE 打字机效果），Markdown 渲染（代码块、加粗、列表、引用）
+- **＋** 菜单只有三项：上传图片、上传文件、压缩会话
+- 联网搜索开关：模型自行判断是否搜索，回答附「参考来源」
+- 深度思考开关：开启后低强度思考，过程默认折叠，可展开
+- 设置只有：API Key、上下文长度滑块（2K–1M）、深度思考、联网搜索、外观
+- 单会话：右上角「＋」直接替换当前会话；会话落盘，重开还在
+- 点自己的消息可原地编辑并重发，该条之后的内容会清空重来
+- 压缩会话：保留最近 10 轮原文，更早的整理成一条摘要
+
+## 隐私
+
+- API Key 用 Android Keystore 中的 AES-256 密钥加密后保存，密钥不可导出；设置关闭后不再回显
+- `allowBackup=false`，Key 不会随系统备份离开设备
+- 除 `api.deepseek.com` 外不访问任何服务器，无统计、无第三方 SDK
+
+## 技术栈
+
+Kotlin + Jetpack Compose (Material3) + OkHttp + kotlinx.serialization + DataStore。
+
+需要 **DeepSeek 官方 API Key**。模型固定 `deepseek-flash`：官方目前唯一支持图片输入的型号。
+
+## 目录
+
+```
+app/src/main/java/com/minids/
+├── MainActivity.kt
+├── ChatViewModel.kt          # 状态、发送、裁剪、压缩、编辑重发
+├── data/                     # 模型、设置（加密存储）、会话 JSON
+├── net/DeepSeekApi.kt        # Files 上传、SSE 对话、余额查询
+├── ui/ChatScreen.kt          # 聊天页、输入栏、思考折叠、来源列表
+├── ui/Sheets.kt              # 设置面板、＋ 菜单、自绘开关
+├── ui/Markdown.kt            # 轻量 Markdown 渲染
+├── ui/Theme.kt               # 浅色 / 近黑深色
+└── util/                     # 图片压缩上传、Key 加解密
+```
+
+## 构建
+
+需要 JDK 17 与 Android SDK（compileSdk 35），用 Android Studio 打开本目录即可。
+
+本仓库**不含 Gradle wrapper**（没有 `gradlew` / `gradle-wrapper.jar`），所以不要用
+`./gradlew`，Studio 会使用自带的 Gradle。
+
+release 构建需要仓库外的 `keystore.properties` 与 `.jks` 文件；没有它们时
+`assembleRelease` 产出未签名包，`assembleDebug` 不受影响。
+
+## 已知取舍
+
+- 图片上传前压到长边 1300px、JPEG 88；官方会再缩放，单图最多计 1024 token
+- PDF/Word/PPT 用 `text_recognition`（只取文字），表格类与文本用 `user_data`
+- 图片和文件多轮复用只存 `file_id`，但每轮请求仍会重复计费其输入 token（官方行为）
+- token 预算是本地估算（中文按 0.9、英文按 0.3），仅用于裁剪，不影响计费
+- 压缩会调用一次非思考模型生成摘要，产生少量费用
+
+## 图标
+
+应用图标由 AI 图像生成工具（Gemini）生成。
+
+## 许可
+
+[MIT](LICENSE)
+
+## API 依据
+
+- https://api-docs.deepseek.com/guides/vision
+- https://api-docs.deepseek.com/guides/files_api
+- https://api-docs.deepseek.com/guides/document_parsing
+- https://api-docs.deepseek.com/guides/web_tools
+- https://api-docs.deepseek.com/api/get-user-balance
