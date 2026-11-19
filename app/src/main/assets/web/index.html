@@ -13,6 +13,7 @@
   }
   *{box-sizing:border-box}
   html,body{height:100%}
+  body.mid-drag,body.mid-drag *{cursor:grabbing!important;user-select:none}
   body{
     margin:0;background:var(--bg);color:var(--fg);
     font:16px/1.6 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
@@ -541,6 +542,42 @@
       if (!doneFlag && !fresh) await new Promise(r => setTimeout(r, 80));
     }
   }
+
+  // 中键拖动滚动：整页任意位置都能拖，两侧空白也算
+  (function midDragScroll() {
+    let drag = null;
+    // 找光标下面真正能滚的那一层；两侧空白处没有，就退回聊天区
+    function scrollerFor(el) {
+      let node = el;
+      while (node && node !== document.body && node !== document.documentElement) {
+        const st = getComputedStyle(node);
+        if (/(auto|scroll)/.test(st.overflowY) && node.scrollHeight > node.clientHeight + 1) return node;
+        node = node.parentElement;
+      }
+      return log;
+    }
+    document.addEventListener('mousedown', e => {
+      if (e.button !== 1) return;
+      // 链接、按钮、输入框上的中键保留浏览器原行为（新标签打开、中键粘贴等）
+      if (e.target.closest && e.target.closest('a,button,input,textarea,select,summary,[contenteditable="true"]')) return;
+      const el = scrollerFor(e.target);
+      drag = { y: e.clientY, top: el.scrollTop, el };
+      e.preventDefault();           // 关掉浏览器自带的中键锚点，换成整页可拖
+      document.body.classList.add('mid-drag');
+    }, true);
+    document.addEventListener('mousemove', e => {
+      if (!drag) return;
+      e.preventDefault();
+      drag.el.scrollTop = drag.top - (e.clientY - drag.y);
+    }, true);
+    function end() {
+      if (!drag) return;
+      drag = null;
+      document.body.classList.remove('mid-drag');
+    }
+    document.addEventListener('mouseup', end, true);
+    window.addEventListener('blur', end);
+  })();
 
   async function consume(a) {
     let from = 0;

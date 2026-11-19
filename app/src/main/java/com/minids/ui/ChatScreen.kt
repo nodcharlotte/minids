@@ -94,9 +94,9 @@ fun ChatScreen(vm: ChatViewModel) {
     var sheet by remember { mutableStateOf(Sheet.None) }
 
     var pickingForEdit by remember { mutableStateOf(false) }
-    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) {
-            if (pickingForEdit) vm.attachToEdit(uri) else vm.attach(uri, true)
+    val pickImages = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
+        if (uris.isNotEmpty()) {
+            if (pickingForEdit) vm.attachImages(uris, forEdit = true) else vm.attachImages(uris)
         }
         pickingForEdit = false
     }
@@ -146,7 +146,7 @@ fun ChatScreen(vm: ChatViewModel) {
                                 onText = vm::setEditText,
                                 onAddImage = {
                                     pickingForEdit = true
-                                    pickImage.launch(
+                                    pickImages.launch(
                                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                     )
                                 },
@@ -183,7 +183,7 @@ fun ChatScreen(vm: ChatViewModel) {
             onDismiss = { sheet = Sheet.None },
             onImage = {
                 sheet = Sheet.None
-                pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                pickImages.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             },
             onFile = {
                 sheet = Sheet.None

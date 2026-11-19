@@ -303,6 +303,49 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * 多选图片：一次挑多张，顺序上传，一张失败不影响其它。
+     * forEdit = true 时加到编辑框的附件里。
+     */
+    fun attachImages(uris: List<Uri>, forEdit: Boolean = false) {
+        if (uris.isEmpty()) return
+        val st = _state.value
+        if (st.uploading || st.streaming) return
+        if (st.settings.apiKey.isBlank()) {
+            notice("先到设置里填写 API Key")
+            return
+        }
+        val key = st.settings.apiKey
+        _state.update { it.copy(uploading = true) }
+        viewModelScope.launch {
+            var failed = 0
+            var lastError: String? = null
+            try {
+                for (uri in uris) {
+                    try {
+                        val att = AttachmentUtil.pickImage(getApplication(), uri, key)
+                        _state.update { s ->
+                            if (forEdit) {
+                                s.copy(editingAttachments = s.editingAttachments + att)
+                            } else {
+                                s.copy(pending = s.pending + att)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        failed++
+                        lastError = (e as? ApiException)?.message ?: e.message
+                    }
+                }
+            } finally {
+                _state.update { it.copy(uploading = false) }
+            }
+            if (failed > 0) {
+                val tail = lastError ?: "未知错误"
+                notice(if (uris.size == 1) "上传失败：$tail" else "$failed 张没能上传：$tail")
+            }
+        }
+    }
+
     /* ---------------- 发送 ---------------- */
 
     fun send() {

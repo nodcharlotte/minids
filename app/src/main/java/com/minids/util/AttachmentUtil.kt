@@ -3,6 +3,8 @@ package com.minids.util
 import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.minids.data.Attachment
@@ -19,7 +21,7 @@ object AttachmentUtil {
         val resolver = app.contentResolver
         val bitmap = decode(uri, resolver) ?: throw IllegalStateException("无法读取这张图片")
         val dir = File(app.filesDir, "images").apply { mkdirs() }
-        val out = File(dir, "img_${System.currentTimeMillis()}.jpg")
+        val out = File(dir, "img_${System.nanoTime()}.jpg")
         FileOutputStream(out).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 88, it) }
         bitmap.recycle()
         val fileId = DeepSeekApi.uploadImage(key, out.readBytes(), out.name)
@@ -81,17 +83,57 @@ object AttachmentUtil {
             inPreferredConfig = Bitmap.Config.ARGB_8888
         }
         val raw = resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) } ?: return null
-        val side = max(raw.width, raw.height)
-        if (side <= MAX_SIDE) return raw
+
+        // 竖屏拍的照片，像素是横着存的，方向记在 EXIF 里。
+        // BitmapFactory 不认 EXIF，我们重新压成 JPEG 后 EXIF 也丢了，
+        // 结果模型看到的就是横躺的照片。这里把方向直接旋进像素。
+        val upright = applyOrientation(raw, orientationOf(uri, resolver))
+
+        val side = max(upright.width, upright.height)
+        if (side <= MAX_SIDE) return upright
 
         val ratio = MAX_SIDE.toFloat() / side
         val scaled = Bitmap.createScaledBitmap(
-            raw,
-            (raw.width * ratio).toInt().coerceAtLeast(1),
-            (raw.height * ratio).toInt().coerceAtLeast(1),
+            upright,
+            (upright.width * ratio).toInt().coerceAtLeast(1),
+            (upright.height * ratio).toInt().coerceAtLeast(1),
             true
         )
-        if (scaled !== raw) raw.recycle()
+        if (scaled !== upright) upright.recycle()
         return scaled
+    }
+
+    private fun orientationOf(uri: Uri, resolver: android.content.ContentResolver): Int = runCatching {
+        resolver.openInputStream(uri)?.use { input ->
+            ExifInterface(input).getAttributeInt(
+                ExifInterface.TAG_ORIENTATION,
+                ExifInterface.ORIENTATION_NORMAL
+            )
+        } ?: ExifInterface.ORIENTATION_NORMAL
+    }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+
+    private fun applyOrientation(src: Bitmap, orientation: Int): Bitmap {
+        val m = Matrix()
+        when (orientation) {
+            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> m.setScale(-1f, 1f)
+            ExifInterface.ORIENTATION_ROTATE_180 -> m.setRotate(180f)
+            ExifInterface.ORIENTATION_FLIP_VERTICAL -> m.setScale(1f, -1f)
+            ExifInterface.ORIENTATION_TRANSPOSE -> {
+                m.setRotate(90f)
+                m.postScale(-1f, 1f)
+            }
+            ExifInterface.ORIENTATION_ROTATE_90 -> m.setRotate(90f)
+            ExifInterface.ORIENTATION_TRANSVERSE -> {
+                m.setRotate(-90f)
+                m.postScale(-1f, 1f)
+            }
+            ExifInterface.ORIENTATION_ROTATE_270 -> m.setRotate(-90f)
+            else -> return src
+        }
+        val out = runCatching {
+            Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
+        }.getOrNull() ?: return src
+        if (out !== src) src.recycle()
+        return out
     }
 }
