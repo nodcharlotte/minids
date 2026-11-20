@@ -189,6 +189,7 @@ fun ChatScreen(vm: ChatViewModel) {
                 sheet = Sheet.None
                 pickFile.launch(arrayOf("*/*"))
             },
+            rounds = s.chat.messages.count { it.role == "user" },
             onCompress = {
                 sheet = Sheet.None
                 vm.compress()

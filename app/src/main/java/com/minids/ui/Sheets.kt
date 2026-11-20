@@ -349,6 +349,7 @@ fun AddSheet(
     onDismiss: () -> Unit,
     onImage: () -> Unit,
     onFile: () -> Unit,
+    rounds: Int,
     onCompress: () -> Unit
 ) {
     ModalBottomSheet(
@@ -381,7 +382,12 @@ fun AddSheet(
             Spacer(Modifier.height(10.dp))
             ActionCard(
                 title = "压缩会话",
-                sub = "保留最近 10 轮，更早的整理成摘要",
+                sub = if (rounds > 10) {
+                    "保留最近 10 轮，更早的并入摘要"
+                } else {
+                    "全部并入摘要，会话清空"
+                },
+                badge = "共 $rounds 轮会话",
                 modifier = Modifier.fillMaxWidth(),
                 onClick = onCompress
             )
@@ -394,6 +400,7 @@ private fun ActionCard(
     title: String,
     sub: String,
     modifier: Modifier,
+    badge: String? = null,
     onClick: () -> Unit
 ) {
     Column(
@@ -405,6 +412,14 @@ private fun ActionCard(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(title, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            if (badge != null) {
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    badge,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             Spacer(Modifier.weight(1f))
             Text("›", fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

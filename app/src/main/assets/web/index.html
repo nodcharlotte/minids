@@ -113,7 +113,7 @@
     <div id="menu">
       <button data-act="image">图片<small>JPEG / PNG / GIF / WebP</small></button>
       <button data-act="file">文件<small>PDF / Word / Excel / PPT / 文本</small></button>
-      <button data-act="compress">压缩会话<small>保留最近 10 轮</small></button>
+      <button data-act="compress">压缩会话<small id="rounds">共 0 轮会话</small></button>
     </div>
     <div class="composer">
       <button id="btnPlus" class="plus">＋</button>
@@ -147,6 +147,7 @@
   const fileAny = document.getElementById('fileAny');
   const usageEl = document.getElementById('usage');
   const modelEl = document.getElementById('model');
+  const roundsEl = document.getElementById('rounds');
 
   let streaming = false;
   let thinkOn = false;
@@ -829,6 +830,7 @@
       log.innerHTML = '';
       usageEl.textContent = state.usage || '';
       modelEl.textContent = state.model || 'deepseek-flash';
+      if (roundsEl) roundsEl.textContent = '共 ' + (state.rounds || 0) + ' 轮会话';
       (state.messages || []).forEach(m => {
         if (m.role === 'user') {
           addUser(m.text || '', m.attachments || [], m);

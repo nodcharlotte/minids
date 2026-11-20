@@ -40,7 +40,10 @@ import com.minids.util.TextCodec
 import java.io.File
 import java.io.IOException
 import java.time.DayOfWeek
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.time.LocalDateTime
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 class ApiException(val code: Int, override val message: String) : IOException(message)
@@ -307,9 +310,17 @@ object DeepSeekApi {
         return "${now.toLocalDate()},$weekday,,App,中文"
     }
 
+    private fun nowLine(): String {
+        val now = LocalDateTime.now()
+        val fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm EEEE", Locale.CHINA)
+        return "${now.format(fmt)}，${ZoneId.systemDefault().id}"
+    }
+
     private fun messageJson(m: Msg, isLastUser: Boolean = false): JsonObject = buildJsonObject {
         put("role", m.role)
-        val body = m.text.trim()
+        // 客户端当前时间：模型自己不知道今天几号几点，不给就会瞎编
+        val stamp = if (isLastUser) "\n\n（客户端时间：${nowLine()}）" else ""
+        val body = (m.text.trim() + stamp).trim()
 
         if (m.role == "user" && m.attachments.isNotEmpty()) {
             put("content", buildJsonArray {

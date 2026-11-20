@@ -101,6 +101,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 put("messages", json.encodeToJsonElement(ListSerializer(Msg.serializer()), st.chat.messages))
                 put("usage", st.usage)
                 put("model", st.settings.modelName ?: "deepseek-flash")
+                put("rounds", st.chat.messages.count { it.role == "user" })
             }.toString()
         }
         WebBridge.imagePath = { id ->
@@ -795,32 +796,46 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         val msgs = st.chat.messages
-        val userIds = msgs.withIndex().filter { it.value.role == "user" }.map { it.index }
-        if (userIds.size <= KEEP_ROUNDS) {
-            notice("不足 $KEEP_ROUNDS 轮，不需要压缩")
-            return false
+        val userIdx = msgs.withIndex().filter { it.value.role == "user" }.map { it.index }
+        val rounds = userIdx.size
+
+        // 超过 10 轮：只压最近 10 轮之前的；10 轮以内：全压，一条不留
+        val head: List<Msg>
+        val tail: List<Msg>
+        if (rounds > KEEP_ROUNDS) {
+            val cut = userIdx[rounds - KEEP_ROUNDS]
+            head = msgs.subList(0, cut)
+            tail = msgs.subList(cut, msgs.size)
+        } else {
+            head = msgs
+            tail = emptyList()
         }
-        val cut = userIds[userIds.size - KEEP_ROUNDS]
-        val head = msgs.subList(0, cut)
-        val tail = msgs.subList(cut, msgs.size)
-        if (head.isEmpty()) {
-            notice("没有可压缩的历史")
+
+        if (head.none { it.role == "user" || it.role == "assistant" }) {
+            notice("没有可压缩的会话")
             return false
         }
 
         _state.update { it.copy(compressing = true) }
         return try {
+            // head 里如果有旧摘要，也一并丢给模型合并，摘要始终是"累加"的
             val prompt = buildString {
-                append("把下面这段对话压缩成摘要，保留关键事实、结论、决定、用户偏好和未完成事项。")
-                append("用中文，最多 600 字，只输出摘要正文，不要开场白。\n\n")
+                append("下面是一段对话记录，其中可能已经包含更早的摘要。")
+                append("请把它整体重新压缩成一份摘要：合并已有摘要，保留关键事实、结论、决定、")
+                append("用户偏好、重要细节和未完成事项，按时间顺序组织。")
+                append("用中文，最多 2000 字，只输出摘要正文，不要开场白。\n\n")
                 head.forEach { m ->
-                    if (m.text.isBlank()) return@forEach
+                    if (m.text.isBlank() && m.attachments.isEmpty()) return@forEach
                     val who = when (m.role) {
                         "user" -> "用户"
                         "assistant" -> "助手"
+                        "system" -> "已有摘要"
                         else -> "备注"
                     }
-                    append(who).append("：").append(m.text).append("\n\n")
+                    if (m.text.isNotBlank()) append(who).append("：").append(m.text).append("\n\n")
+                    if (m.attachments.isNotEmpty()) {
+                        append("（附件：").append(m.attachments.joinToString("、") { it.name }).append("）\n\n")
+                    }
                 }
             }
             val sb = StringBuilder()
@@ -845,7 +860,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             }
             persist()
             cleanupImages()
-            notice("已压缩，保留最近 $KEEP_ROUNDS 轮")
+            val kept = tail.count { it.role == "user" }
+            notice(if (kept == 0) "已全部压缩成摘要" else "已压缩，保留最近 $kept 轮")
             true
         } catch (e: Exception) {
             notice((e as? ApiException)?.message ?: "压缩失败：${e.message ?: "未知错误"}")
